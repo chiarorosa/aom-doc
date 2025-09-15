@@ -5824,6 +5824,42 @@ BEGIN_PARTITION_SEARCH:
   start_timing(cpi, encode_sb_time);
 #endif
   if (part_search_state.found_best_partition) {
+
+    /*
+     * PARTITION MODE EXTRACTION METHOD
+     * ================================
+     * Extrai dados de particionamento para análise de ML e pesquisa.
+     * 
+     * Variáveis capturadas:
+     * - order_hint: ID único do frame (0,1,2...) para reordenação temporal
+     * - frame_type: Tipo do frame (0=KEY, 1=INTER, 2=INTRA_ONLY, 3=S_FRAME)
+     * - bsize: Tamanho do bloco (4x4, 8x8, 16x16, 32x32, 64x64, 128x128)
+     * - mi_row/mi_col: Posição na grade Motion Info (unidade=4x4 pixels)
+     * - partitioning: Tipo de partição escolhida:
+     *   0=NONE, 1=HORZ, 2=VERT, 3=SPLIT, 4=HORZ_A, 5=HORZ_B,
+     *   6=VERT_A, 7=VERT_B, 8=HORZ_4, 9=VERT_4
+     * - base_qindex: Índice de quantização (0-255, controla qualidade/compressão)
+     * 
+     * Formato de saída: "order_hint frame_type bsize mi_row mi_col partitioning qindex\n"
+     * Arquivo: "partition_frame_{order_hint}.txt"
+     */
+
+    char cmd[100];
+    sprintf(cmd, "%d %d %d %d %d %d %d\n", cm->current_frame.order_hint, cm->current_frame.frame_type, bsize, mi_row, mi_col, pc_tree->partitioning, cm->quant_params.base_qindex);
+
+    char save_file [32];
+    sprintf(save_file, "partition_frame_%d.txt", cm->current_frame.order_hint);
+
+    FILE *fp = fopen(save_file, "a+");
+    if (fp == NULL) {
+        printf("Error opening file!\n");
+        exit(-1);
+    }
+    fputs(cmd, fp);
+    fclose(fp);
+    // fim script
+
+    // AQUI Captura apenas superblocks (blocos maiores)
     if (bsize == cm->seq_params->sb_size) {
       // Encode the superblock.
       const int emit_output = multi_pass_mode != SB_DRY_PASS;
@@ -5845,6 +5881,8 @@ BEGIN_PARTITION_SEARCH:
       pc_tree = NULL;
       td->pc_root = NULL;
       pc_tree_dealloc = 1;
+
+    // AQUI Captura blocos menores
     } else if (should_do_dry_run_encode_for_current_block(
                    cm->seq_params->sb_size, x->sb_enc.max_partition_size,
                    pc_tree->index, bsize)) {
@@ -5852,6 +5890,7 @@ BEGIN_PARTITION_SEARCH:
       encode_sb(cpi, td, tile_data, tp, mi_row, mi_col, DRY_RUN_NORMAL, bsize,
                 pc_tree, NULL);
     }
+
   }
 #if CONFIG_COLLECT_COMPONENT_TIMING
   end_timing(cpi, encode_sb_time);
